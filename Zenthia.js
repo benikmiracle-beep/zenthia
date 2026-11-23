@@ -258,14 +258,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const priceText = card.querySelector('.price-row strong')?.textContent.trim() || '$0';
     const price = card.querySelector('.price-row strong');
     const usd = price?.dataset.usd || parseFloat((priceText.match(/[\d,.]+/) || ['0'])[0].replace(/,/g, ''));
-    return { id: name, name, image, usd: Number(usd) };
+    return { id: name, name, image, usd: Number(usd), quantity: 1 };
   }
 
   function updateBadgeCounts() {
     const wishBadge = document.querySelector('.wish .badge');
     const cartCount = document.querySelector('.cart .n');
     if (wishBadge) wishBadge.textContent = favorites.length;
-    if (cartCount) cartCount.textContent = cart.length;
+    if (cartCount) cartCount.textContent = cart.reduce((total, item) => total + (item.quantity || 1), 0);
   }
 
   function setupProductCards() {
@@ -277,33 +277,66 @@ document.addEventListener('DOMContentLoaded', () => {
         button.classList.add('wishlist-button');
         button.setAttribute('aria-label', 'Add to wishlist');
         button.dataset.productId = product.id;
-        if (favorites.some((item) => item.id === product.id)) button.classList.add('is-favorite');
+
+        if (favorites.some((item) => item.id === product.id)) {
+          button.classList.add('is-favorite');
+          button.innerHTML = '<img src="images/heart-saved.svg" alt="" class="i">';
+        }
 
         button.addEventListener('click', () => {
           const existing = favorites.findIndex((item) => item.id === product.id);
-          if (existing >= 0) favorites.splice(existing, 1);
-          else favorites.push(product);
+          if (existing >= 0) {
+            favorites.splice(existing, 1);
+            button.classList.remove('is-favorite');
+            button.innerHTML = '<img src="images/heart-slate.svg" alt="" class="i">';
+          } else {
+            favorites.push(product);
+            button.classList.add('is-favorite');
+            button.innerHTML = '<img src="images/heart-saved.svg" alt="" class="i">';
+          }
           localStorage.setItem('zenthia-favorites', JSON.stringify(favorites));
-          button.classList.toggle('is-favorite', existing < 0);
+          button.setAttribute('aria-label', existing >= 0 ? 'Add to wishlist' : 'Remove from wishlist');
           updateBadgeCounts();
         });
       }
 
       const priceRow = card.querySelector('.price-row');
-      if (priceRow && !priceRow.querySelector('.add-cart-button')) {
-        const addButton = document.createElement('button');
-        addButton.type = 'button';
-        addButton.className = 'add-cart-button';
-        addButton.textContent = 'Add to cart';
-        addButton.addEventListener('click', () => {
-          if (!cart.some((item) => item.id === product.id)) {
-            cart.push(product);
-            localStorage.setItem('zenthia-cart', JSON.stringify(cart));
-            addButton.textContent = 'Added';
-            updateBadgeCounts();
+      if (priceRow && !priceRow.querySelector('.cart-controls')) {
+        const existingCartItem = cart.find((item) => item.id === product.id);
+        const controls = document.createElement('div');
+        controls.className = 'cart-controls';
+
+        if (existingCartItem) {
+          controls.innerHTML = `<button type="button" class="cart-minus" aria-label="Decrease quantity">−</button><strong class="cart-quantity">${existingCartItem.quantity || 1}</strong><button type="button" class="cart-plus" aria-label="Increase quantity">+</button>`;
+        } else {
+          controls.innerHTML = '<button type="button" class="add-cart-button">Add to cart</button>';
+        }
+
+        controls.addEventListener('click', (event) => {
+          const cartItem = cart.find((item) => item.id === product.id);
+
+          if (event.target.closest('.add-cart-button')) {
+            const newItem = { ...product, quantity: 1 };
+            cart.push(newItem);
+            controls.innerHTML = '<button type="button" class="cart-minus" aria-label="Decrease quantity">−</button><strong class="cart-quantity">1</strong><button type="button" class="cart-plus" aria-label="Increase quantity">+</button>';
+          } else if (event.target.closest('.cart-plus')) {
+            cartItem.quantity = (cartItem.quantity || 1) + 1;
+            controls.querySelector('.cart-quantity').textContent = cartItem.quantity;
+          } else if (event.target.closest('.cart-minus')) {
+            if (cartItem.quantity > 1) {
+              cartItem.quantity -= 1;
+              controls.querySelector('.cart-quantity').textContent = cartItem.quantity;
+            } else {
+              cart = cart.filter((item) => item.id !== product.id);
+              controls.innerHTML = '<button type="button" class="add-cart-button">Add to cart</button>';
+            }
           }
+
+          localStorage.setItem('zenthia-cart', JSON.stringify(cart));
+          updateBadgeCounts();
         });
-        priceRow.appendChild(addButton);
+
+        priceRow.appendChild(controls);
       }
     });
   }
@@ -314,7 +347,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const items = isCart ? cart : favorites;
     shopPageTitle.textContent = isCart ? 'Shopping Cart' : 'My Favorites';
     shopPageLabel.textContent = isCart ? 'Zenthia checkout' : 'Zenthia saved items';
-    shopPageCount.textContent = `${items.length} ${items.length === 1 ? 'item' : 'items'}`;
+    shopPageCount.textContent = isCart
+      ? `${cart.reduce((total, item) => total + (item.quantity || 1), 0)} ${cart.reduce((total, item) => total + (item.quantity || 1), 0) === 1 ? 'item' : 'items'}`
+      : `${items.length} ${items.length === 1 ? 'item' : 'items'}`;
 
     if (!items.length) {
       shopPageItems.innerHTML = `<div class="shop-page-empty"><img src="images/${isCart ? 'shopping-cart-navy.svg' : 'heart-saved.svg'}" alt=""><h2>${isCart ? 'Your cart is empty' : 'No favorites yet'}</h2><p>${isCart ? 'Add products from the store to begin.' : 'Tap the heart on any product to save it.'}</p></div>`;
@@ -322,9 +357,9 @@ document.addEventListener('DOMContentLoaded', () => {
       shopPageItems.innerHTML = items.map((item, index) => `
         <article class="shop-page-item">
           <img src="${item.image}" alt="${item.name}">
-          <div class="shop-page-item-info"><h3>${item.name}</h3><strong>${formatPrice(item.usd)}</strong></div>
+          <div class="shop-page-item-info"><h3>${item.name}</h3><strong>${formatPrice(item.usd * (item.quantity || 1))}</strong></div>
           ${isCart
-            ? `<button type="button" class="shop-item-remove" data-cart-remove="${index}">Remove</button>`
+            ? `<div class="shop-cart-controls"><button type="button" class="cart-minus" data-cart-minus="${index}" aria-label="Decrease quantity">−</button><strong class="cart-quantity">${item.quantity || 1}</strong><button type="button" class="cart-plus" data-cart-plus="${index}" aria-label="Increase quantity">+</button></div><button type="button" class="shop-item-remove" data-cart-remove="${index}">Remove</button>`
             : `<button type="button" class="shop-item-cart" data-add-cart="${index}">Add to cart</button>`}
         </article>`).join('');
     }
@@ -401,6 +436,31 @@ document.addEventListener('DOMContentLoaded', () => {
       cart.splice(Number(removeButton.dataset.cartRemove), 1);
       localStorage.setItem('zenthia-cart', JSON.stringify(cart));
       updateBadgeCounts();
+      setupProductCards();
+      openShopPage('cart');
+      return;
+    }
+
+    const plusButton = event.target.closest('[data-cart-plus]');
+    if (plusButton) {
+      const item = cart[Number(plusButton.dataset.cartPlus)];
+      item.quantity = (item.quantity || 1) + 1;
+      localStorage.setItem('zenthia-cart', JSON.stringify(cart));
+      updateBadgeCounts();
+      setupProductCards();
+      openShopPage('cart');
+      return;
+    }
+
+    const minusButton = event.target.closest('[data-cart-minus]');
+    if (minusButton) {
+      const index = Number(minusButton.dataset.cartMinus);
+      const item = cart[index];
+      if ((item.quantity || 1) > 1) item.quantity -= 1;
+      else cart.splice(index, 1);
+      localStorage.setItem('zenthia-cart', JSON.stringify(cart));
+      updateBadgeCounts();
+      setupProductCards();
       openShopPage('cart');
       return;
     }
@@ -408,10 +468,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const addButton = event.target.closest('[data-add-cart]');
     if (addButton) {
       const item = favorites[Number(addButton.dataset.addCart)];
-      if (item && !cart.some((cartItem) => cartItem.id === item.id)) {
-        cart.push(item);
+      if (item) {
+        const existing = cart.find((cartItem) => cartItem.id === item.id);
+        if (existing) existing.quantity = (existing.quantity || 1) + 1;
+        else cart.push({ ...item, quantity: 1 });
         localStorage.setItem('zenthia-cart', JSON.stringify(cart));
         updateBadgeCounts();
+        setupProductCards();
         addButton.textContent = 'Added';
       }
     }
