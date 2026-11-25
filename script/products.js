@@ -72,6 +72,25 @@ window.ZENTHIA_PRODUCTS = [
     ];
 
     const all = [];
+    const categoryImages = {
+      'phones-tablets': 'images/products/smart-watch.jpg',
+      'computers-accessories': 'images/products/desk-lamp.jpg',
+      audio: 'images/products/headphones.jpg',
+      'mens-fashion': 'images/products/leather-loafers.jpg',
+      'womens-fashion': 'images/products/cosmetic-kit.jpg',
+      shoes: 'images/products/street-sneakers.jpg',
+      'bags-accessories': 'images/products/tote-bag.jpg',
+      'watches-jewellery': 'images/products/smart-watch.jpg',
+      'beauty-personal-care': 'images/products/cosmetic-kit.jpg',
+      furniture: 'images/products/accent-chair.jpg',
+      lighting: 'images/products/desk-lamp.jpg',
+      drinkware: 'images/products/hydra-bottle.jpg',
+      'sports-outdoors': 'images/products/street-sneakers.jpg',
+      gaming: 'images/products/mini-speaker.jpg',
+      groceries: 'images/products/hydra-bottle.jpg',
+      'baby-products': 'images/products/cosmetic-kit.jpg',
+      'automotive-accessories': 'images/products/travel-pouch.jpg'
+    };
     let serial = 0;
     for (const template of catalogueTemplates) {
       template.names.forEach((name, index) => {
@@ -102,8 +121,8 @@ window.ZENTHIA_PRODUCTS = [
           availability: stock > 0 ? 'In stock' : 'Out of stock',
           colors: template.category.includes('fashion') || ['shoes', 'bags-accessories', 'furniture', 'baby-products'].includes(template.category) ? ['Black', 'Navy', 'Grey'] : ['Classic', 'Silver'],
           sizes: ['shoes', 'mens-fashion', 'womens-fashion', 'bags-accessories'].includes(template.category) ? (template.category === 'shoes' ? ['38', '39', '40', '41', '42', '43'] : ['S', 'M', 'L', 'XL']) : [],
-          image: 'images/products/travel-pouch.jpg',
-          images: ['images/products/travel-pouch.jpg'],
+          image: categoryImages[template.category] || 'images/products/travel-pouch.jpg',
+          images: [categoryImages[template.category] || 'images/products/travel-pouch.jpg'],
           badge: discounted ? 'Sale' : (serial % 7 === 0 ? 'New' : undefined),
           catalog: true,
           featured: 200 - serial,
