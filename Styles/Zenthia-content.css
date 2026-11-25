@@ -975,6 +975,36 @@ a.catalog-filter {
   border-radius:8px;
 }
 
+/* expanded product detail controls */
+.pv-media-column { min-width:0; }
+.pv-thumbnails { display:flex; gap:10px; margin-top:12px; }
+.pv-thumb { width:74px; height:74px; padding:3px; border:1px solid #dfe6ef; border-radius:10px; background:#fff; overflow:hidden; }
+.pv-thumb.is-active { border:2px solid var(--green); }
+.pv-thumb img { width:100%; height:100%; object-fit:cover; border-radius:7px; }
+.pv-option { display:grid; gap:8px; margin-top:18px; }
+.pv-option > span, .pv-quantity-row > span { color:#64748b; font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+.pv-options { display:flex; flex-wrap:wrap; gap:8px; }
+.pv-option-button { min-height:38px; padding:0 12px; border:1px solid #dfe6ef; border-radius:8px; background:#fff; color:#334155; font-size:13px; font-weight:700; }
+.pv-option-button.is-active { border-color:#111827; box-shadow:inset 0 0 0 1px #111827; color:#111827; }
+.pv-quantity-row { display:flex; align-items:center; justify-content:space-between; margin-top:18px; max-width:320px; }
+.pv-quantity { display:grid; grid-template-columns:38px 44px 38px; height:38px; border:1px solid #dfe6ef; border-radius:8px; overflow:hidden; }
+.pv-quantity button { background:#f8fafc; color:#334155; font-size:18px; }
+.pv-quantity strong { display:grid; place-items:center; border-inline:1px solid #dfe6ef; font-size:13px; }
+.pv-reviews { margin-top:48px; padding-top:28px; border-top:1px solid #e7edf3; }
+.pv-reviews-heading { display:flex; align-items:flex-end; justify-content:space-between; gap:20px; margin-bottom:18px; }
+.pv-reviews-heading h2 { font-size:22px; }
+.pv-reviews-heading > div { display:grid; grid-template-columns:auto auto; align-items:center; column-gap:8px; text-align:right; }
+.pv-reviews-heading > div strong { grid-row:1 / 3; font-size:30px; }
+.pv-reviews-heading > div span { color:#f59e0b; }
+.pv-reviews-heading > div small { color:#64748b; }
+.pv-review-list { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+.pv-review { border:1px solid #e7edf3; border-radius:12px; padding:16px; background:#fff; }
+.pv-review-head { display:flex; justify-content:space-between; gap:10px; color:#334155; font-size:12px; }
+.pv-review-head span { color:#f59e0b; white-space:nowrap; }
+.pv-review-head small { color:#d6dde6; }
+.pv-review h3 { margin:12px 0 6px; font-size:14px; }
+.pv-review p { color:#64748b; font-size:13px; line-height:1.55; }
+
 @media (max-width:1000px) {
   .wrap {
     padding: 0 16px;

@@ -48,3 +48,95 @@ window.ZENTHIA_PRODUCTS = [
   { id: 'volt-lightweight-move-sneaker', brand: 'Volt', stock: 28, sold: 880, description: 'Lightweight training sneaker with responsive cushioning and breathable knit upper for gym sessions and runs.', name: 'Volt Lightweight Move Sneaker', categories: ['shoes', 'sports-outdoors'], tags: ['Accessories', 'Best Sellers'], price: 79, oldPrice: 115, rating: 4.9, reviews: 241, image: 'images/products/street-sneakers.jpg', badge: 'Sale', catalog: true, featured: 2, newest: 6 },
   { id: 'carry-all-compact-travel-pouch', brand: 'Carry All', stock: 60, sold: 230, description: 'Compact travel pouch to organise cables, chargers, toiletries and small accessories inside your bag.', name: 'Carry All Compact Travel Pouch', categories: ['bags-accessories'], tags: ['Accessories', 'Electronics'], price: 24, oldPrice: 39, rating: 4.5, reviews: 64, image: 'images/products/travel-pouch.jpg', catalog: true, featured: 1, newest: 3 }
 ];
+
+  /* ---------- expanded catalogue data ---------- */
+  (function buildExpandedCatalogue() {
+    const catalogueTemplates = [
+      { category: 'phones-tablets', subcategory: 'Phones', brands: ['Aural', 'Nova', 'Pixelon'], names: ['Pro 5G Smartphone', 'Compact 5G Phone', 'Unlimited Data Smartphone', 'Android Performance Phone', 'Smartphone Mini', 'Camera Pro Mobile', 'Edge OLED Phone', 'Essential 5G Phone', 'Power Battery Phone'], keywords: 'smartphone' },
+      { category: 'computers-accessories', subcategory: 'Computers', brands: ['Lumina', 'Vertex', 'CoreTech'], names: ['Ultrabook Laptop', 'Performance Notebook', 'Student Laptop', 'Creator Workstation', 'Portable 14-inch PC', 'Gaming Laptop', 'Business Notebook', 'Slim Chromebook', 'Desktop PC'], keywords: 'laptop computer' },
+      { category: 'audio', subcategory: 'Headphones', brands: ['Echo', 'Nova', 'Sonic'], names: ['Studio Headphones', 'Noise-Canceling Earbuds', 'Wireless Gaming Headset', 'Portable Bluetooth Speaker', 'Over-Ear Wireless Headphones', 'True Wireless Earbuds', 'Desktop Speaker Set', 'Soundbar', 'Party Bluetooth Speaker'], keywords: 'headphones speaker audio' },
+      { category: 'mens-fashion', subcategory: 'Menswear', brands: ['North & Loom', 'Mason', 'Zenthia'], names: ['Oxford Dress Shirt', 'Relaxed Linen Shirt', 'Classic Chino Trousers', 'Tailored Blazer', 'Essential Cotton Hoodie', 'Premium Crewneck Sweater', 'Modern Utility Jacket', 'Slim-Fit Denim Jeans', 'Everyday Polo Shirt'], keywords: 'mens fashion clothing' },
+      { category: 'womens-fashion', subcategory: 'Womenswear', brands: ['Velora', 'Asteria', 'Zenthia'], names: ['Wrap Midi Dress', 'Silk-Blend Blouse', 'High-Waist Wide Leg Trousers', 'Classic Trench Coat', 'Everyday Knit Cardigan', 'Cotton Day Dress', 'Tailored Suit Jacket', 'Soft Pleated Skirt', 'Premium Ribbed Top'], keywords: 'womens fashion clothing' },
+      { category: 'shoes', subcategory: 'Footwear', brands: ['Drift', 'Volt', 'Stride'], names: ['Retro Court Sneakers', 'Trail Running Shoes', 'Leather Chelsea Boots', 'Lightweight Walking Shoes', 'Canvas Low-Tops', 'Waterproof Hiking Boots', 'Training Cross-Trainers', 'Classic Derby Shoes', 'Comfort Slip-On Shoes'], keywords: 'shoes footwear sneakers' },
+      { category: 'bags-accessories', subcategory: 'Bags', brands: ['Velora', 'Carry All', 'Roam'], names: ['Canvas Backpack', 'Leather Crossbody Bag', 'Cabin Carry-On', 'Roller Travel Bag', 'Work Laptop Backpack', 'Mini Shoulder Bag', 'Weekender Duffel', 'Slim Card Wallet', 'Organiser Travel Pouch'], keywords: 'bag backpack luggage' },
+      { category: 'watches-jewellery', subcategory: 'Jewellery', brands: ['Luma', 'Aurelia', 'Crown'], names: ['Minimal Steel Watch', 'Classic Leather Watch', 'Sterling Silver Necklace', 'Gold-Tone Bracelet', 'Diamond Accent Earrings', 'Sapphire Pendant', 'Automatic Dress Watch', 'Stackable Silver Ring', 'Chronograph Watch'], keywords: 'watch jewelry' },
+      { category: 'beauty-personal-care', subcategory: 'Skincare', brands: ['Glow', 'Natura', 'Serene'], names: ['Vitamin C Face Serum', 'Hydrating Face Cream', 'Gentle Gel Cleanser', 'SPF 50 Sunscreen', 'Clay Detox Mask', 'Revitalising Eye Cream', 'Rose Body Lotion', 'Lip Care Balm', 'Daily Beauty Set'], keywords: 'cosmetics skincare beauty' },
+      { category: 'furniture', subcategory: 'Furniture', brands: ['Aster', 'Arc', 'Haven'], names: ['Modular Bookshelf', 'Extendable Dining Table', 'Upholstered Bed Frame', 'Oak Coffee Table', 'Ergonomic Office Chair', 'Storage Sideboard', 'Compact Writing Desk', 'Lounge Armchair', 'Solid Wood Bench'], keywords: 'furniture chair table' },
+      { category: 'lighting', subcategory: 'Lighting', brands: ['Halo', 'Noura', 'Lumio'], names: ['Floor Reading Lamp', 'Globe Table Lamp', 'Pendant Ceiling Light', 'LED Task Lamp', 'Rechargeable Bedside Lamp', 'Adjustable Wall Sconce', 'Smart RGB Light Bar', 'Fabric Shade Floor Lamp', 'Minimal Desk Light'], keywords: 'lamp lighting' },
+      { category: 'drinkware', subcategory: 'Drinkware', brands: ['Hydra', 'Thermo', 'Cask'], names: ['Vacuum Travel Mug', 'Glass Water Bottle', 'Insulated Coffee Carafe', 'Reusable Water Cup', 'Ceramic Mug Set', 'Collapsible Sports Bottle', 'Stainless Steel Tumbler', 'Juice Infuser Bottle', 'Tea and Coffee Flask'], keywords: 'bottle cup mug drinkware' },
+      { category: 'sports-outdoors', subcategory: 'Sporting Goods', brands: ['Volt', 'Peak', 'Terra'], names: ['Yoga Exercise Mat', 'Adjustable Dumbbell Set', 'Camping Tent', 'Hiking Daypack', 'Resistance Bands Kit', 'Cycling Helmet', 'Insulated Hiking Flask', 'Foldable Camping Chair', 'Digital Jump Rope'], keywords: 'sports outdoor fitness' },
+      { category: 'gaming', subcategory: 'Gaming', brands: ['Arcade', 'Pulse', 'Nexus'], names: ['Wireless Gaming Controller', 'Mechanical Keyboard', 'Gaming Mouse', 'RGB Headset', 'Gaming Monitor', 'Controller Charging Dock', 'VR Headset', 'Gaming Chair', 'Portable Console'], keywords: 'gaming gaming controller' },
+      { category: 'groceries', subcategory: 'Pantry', brands: ['Harvest', 'Daily Table', 'Green Fork'], names: ['Organic Coffee Beans', 'Whole-Grain Breakfast Oats', 'Extra Virgin Olive Oil', 'Natural Peanut Butter', 'Premium Green Tea', 'Dark Chocolate Box', 'Wildflower Honey', 'Mixed Nuts Selection', 'Brown Basmati Rice'], keywords: 'grocery food pantry' },
+      { category: 'baby-products', subcategory: 'Baby Essentials', brands: ['Little Sprout', 'Cuddle', 'Milo'], names: ['Soft Cotton Bodysuit Set', 'Baby Carrier', 'Wooden Activity Toy', 'Insulated Food Jar', 'Convertible Baby Seat', 'Waterproof Changing Mat', 'Muslin Swaddle Pack', 'Silicone Feeding Set', 'Baby Monitor'], keywords: 'baby infant child' },
+      { category: 'automotive-accessories', subcategory: 'Vehicle Accessories', brands: ['RoadMate', 'Apex', 'Driveline'], names: ['Dash Camera', 'Portable Tyre Inflator', 'Leather Steering Cover', 'Magnetic Phone Mount', 'Car Seat Organiser', 'Emergency Road Kit', 'LED Interior Light Kit', 'All-Weather Floor Mats', 'Jump Starter Pack'], keywords: 'car automotive accessories' }
+    ];
+
+    const all = [];
+    let serial = 0;
+    for (const template of catalogueTemplates) {
+      template.names.forEach((name, index) => {
+        serial += 1;
+        const brand = template.brands[index % template.brands.length];
+        const slugName = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        const stock = (serial * 7) % 29 === 0 ? 0 : 4 + ((serial * 13) % 78);
+        const price = 18 + ((serial * 47) % 332);
+        const discounted = serial % 3 === 0;
+        const reviews = 35 + ((serial * 89) % 760);
+        const lock = serial * 101;
+        all.push({
+          id: `${slugName}-${brand.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${serial}`,
+          name: `${brand} ${name}`,
+          brand,
+          subcategory: template.subcategory,
+          categories: [template.category],
+          label: template.subcategory,
+          tags: serial % 4 === 0 ? ['Best Sellers'] : serial % 5 === 0 ? ['Electronics'] : [],
+          description: `A dependable ${name.toLowerCase()} from ${brand}, designed for everyday use with quality materials, practical features and Zenthia delivery support.`,
+          price,
+          ...(discounted ? { oldPrice: Math.round(price * 1.32) } : {}),
+          stock,
+          sold: 80 + ((serial * 67) % 1100),
+          rating: Number((4.2 + (serial % 8) * 0.1).toFixed(1)),
+          reviews,
+          seller: { name: `${brand} Official Store`, rating: 4.7 + (serial % 3) * 0.1, verified: true },
+          availability: stock > 0 ? 'In stock' : 'Out of stock',
+          colors: template.category.includes('fashion') || ['shoes', 'bags-accessories', 'furniture', 'baby-products'].includes(template.category) ? ['Black', 'Navy', 'Grey'] : ['Classic', 'Silver'],
+          sizes: ['shoes', 'mens-fashion', 'womens-fashion', 'bags-accessories'].includes(template.category) ? (template.category === 'shoes' ? ['38', '39', '40', '41', '42', '43'] : ['S', 'M', 'L', 'XL']) : [],
+          image: 'images/products/travel-pouch.jpg',
+          images: ['images/products/travel-pouch.jpg'],
+          badge: discounted ? 'Sale' : (serial % 7 === 0 ? 'New' : undefined),
+          catalog: true,
+          featured: 200 - serial,
+          newest: (serial % 20) + 1
+        });
+      });
+    }
+
+    window.ZENTHIA_EXPANDED_CATALOGUE = all;
+  })();
+
+/* 153 generated products are appended to the existing catalogue. */
+window.ZENTHIA_PRODUCTS = window.ZENTHIA_PRODUCTS.concat(window.ZENTHIA_EXPANDED_CATALOGUE || []);
+
+/* Backfill fields for the original curated products so every listing has the same complete shape. */
+const subcategoryNames = {
+  'phones-tablets': 'Phones', 'computers-accessories': 'Computers', audio: 'Audio',
+  'mens-fashion': 'Menswear', 'womens-fashion': 'Womenswear', shoes: 'Footwear',
+  'bags-accessories': 'Bags', 'watches-jewellery': 'Watches and Jewellery',
+  'smart-watches': 'Smart Watches', 'beauty-personal-care': 'Personal Care',
+  furniture: 'Furniture', lighting: 'Lighting', drinkware: 'Drinkware',
+  'sports-outdoors': 'Sporting Goods', gaming: 'Gaming', groceries: 'Pantry',
+  'baby-products': 'Baby Essentials', 'automotive-accessories': 'Vehicle Accessories'
+};
+window.ZENTHIA_PRODUCTS.forEach((product, index) => {
+  const category = (product.categories || [])[0];
+  product.subcategory = product.subcategory || subcategoryNames[category] || 'General';
+  product.reviews = product.reviews || 45 + ((index * 73) % 520);
+  product.seller = product.seller || { name: `${product.brand || 'Zenthia'} Official Store`, rating: 4.8, verified: true };
+  product.availability = product.availability || (product.stock > 0 ? 'In stock' : 'Out of stock');
+  product.images = product.images || (product.image ? [product.image] : []);
+  product.colors = product.colors || ['Classic', 'Black', 'Navy'];
+  product.sizes = product.sizes || (['shoes', 'mens-fashion', 'womens-fashion'].includes(category)
+    ? (category === 'shoes' ? ['38', '39', '40', '41', '42', '43'] : ['S', 'M', 'L', 'XL'])
+    : []);
+});

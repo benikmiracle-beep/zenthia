@@ -927,25 +927,44 @@ document.addEventListener('DOMContentLoaded', () => {
     const related = PRODUCTS.filter((o) => o.id !== p.id && (o.categories || []).some((id) => mine.has((rootOf(id) || {}).id)))
       .sort((a, b) => shared(b) - shared(a) || (b.featured || 0) - (a.featured || 0))
       .slice(0, 4);
+    const gallery = [...new Set([p.image, ...(p.images || [])].filter(Boolean))];
+    const thumbnails = gallery.length > 1 ? gallery.map((image, index) => `<button type="button" class="pv-thumb${index === 0 ? ' is-active' : ''}" data-pv-image="${esc(image)}" aria-label="View product image ${index + 1}"><img src="${esc(image)}" alt="${esc(p.name)} view ${index + 1}"></button>`).join('') : '';
+    const colors = p.colors || ['Classic'];
+    const sizes = p.sizes || [];
+    const seller = p.seller || { name: 'Zenthia Marketplace', rating: 4.8, verified: true };
+    const reviewSeed = p.reviews || 48;
+    const customerReviews = [
+      { name: 'Verified buyer', rating: Math.max(4, Math.round(p.rating)), title: 'Exactly as described', text: 'Good quality, carefully packed and delivered within the stated timeframe.' },
+      { name: 'Zenthia customer', rating: Math.max(4, Math.round(p.rating)), title: 'Would buy again', text: 'The product looks and works as expected. It is a practical choice for everyday use.' },
+      { name: 'Verified buyer', rating: Math.round(p.rating), title: 'Great overall experience', text: 'Smooth ordering process and the item matched the photos and description.' }
+    ];
+    const reviewsHTML = customerReviews.map((review) => `<article class="pv-review"><div class="pv-review-head"><strong>${esc(review.name)}</strong><span>${'★'.repeat(review.rating)}<small>${'★'.repeat(5 - review.rating)}</small></span></div><h3>${esc(review.title)}</h3><p>${esc(review.text)}</p></article>`).join('');
     document.title = `${p.name} – Zenthia`;
     productView.innerHTML = `
       <nav class="pv-crumbs" aria-label="Breadcrumb">${lastBrowseHash ? `<a class="pv-back" href="${esc(lastBrowseHash)}">← Back to results</a>` : ''}<span><a href="#">Home</a>${trail.length ? ' / ' + trail.join(' / ') : ''} / <b>${esc(p.name)}</b></span></nav>
       <div class="pv-grid">
-        <div class="pv-media"><img src="${p.image}" alt="${esc(p.name)}" decoding="async">${p.badge ? `<span class="catalog-badge${p.badge === 'Sale' ? ' sale' : ''}">${esc(p.badge)}</span>` : ''}</div>
+        <div class="pv-media-column">
+          <div class="pv-media"><img id="pv-main-image" src="${esc(gallery[0])}" alt="${esc(p.name)}" decoding="async">${p.badge ? `<span class="catalog-badge${p.badge === 'Sale' ? ' sale' : ''}">${esc(p.badge)}</span>` : ''}</div>
+          ${thumbnails ? `<div class="pv-thumbnails" aria-label="Product images">${thumbnails}</div>` : ''}
+        </div>
         <div class="pv-info">
           ${p.brand ? `<a class="pv-brand" href="${routeHash({ type: 'search', arg: p.brand, f: EMPTY_FILTERS(), sort: '' })}">${esc(p.brand)}</a>` : ''}
           <h1>${esc(p.name)}</h1>
-          <div class="pv-rating"><span class="pv-stars" aria-hidden="true">${starsFor(p.rating)}</span><span>${p.rating}${p.reviews ? ` · ${p.reviews} reviews` : ''}</span></div>
+          <div class="pv-rating"><span class="pv-stars" aria-hidden="true">${starsFor(p.rating)}</span><span>${p.rating}${p.reviews ? ` · ${p.reviews} reviews` : ` · ${reviewSeed} reviews`}</span></div>
           <div class="pv-price"><strong>${formatPrice(p.price)}</strong>${p.oldPrice ? `<del>${formatPrice(p.oldPrice)}</del><span class="catalog-off">-${off}%</span>` : ''}</div>
           <div class="pv-stock ${out ? 'out' : low ? 'low' : 'in'}">${out ? 'Out of stock' : low ? `Only ${p.stock} left in stock` : 'In stock'}</div>
           ${p.description || p.blurb ? `<p class="pv-desc">${esc(p.description || p.blurb)}</p>` : ''}
-          <dl class="pv-meta">${p.brand ? `<div><dt>Brand</dt><dd>${esc(p.brand)}</dd></div>` : ''}<div><dt>Category</dt><dd>${cats}</dd></div></dl>
+          ${sizes.length ? `<div class="pv-option"><span>Size</span><div class="pv-options">${sizes.map((size, index) => `<button type="button" class="pv-option-button${index === 0 ? ' is-active' : ''}" data-pv-size="${esc(size)}">${esc(size)}</button>`).join('')}</div></div>` : ''}
+          <div class="pv-option"><span>Colour</span><div class="pv-options">${colors.map((color, index) => `<button type="button" class="pv-option-button${index === 0 ? ' is-active' : ''}" data-pv-color="${esc(color)}">${esc(color)}</button>`).join('')}</div></div>
+          <div class="pv-quantity-row"><span>Quantity</span><div class="pv-quantity" aria-label="Quantity"><button type="button" data-pv-qty="-1" aria-label="Decrease quantity">−</button><strong id="pv-quantity-value">1</strong><button type="button" data-pv-qty="1" aria-label="Increase quantity">+</button></div></div>
+          <dl class="pv-meta">${p.brand ? `<div><dt>Brand</dt><dd>${esc(p.brand)}</dd></div>` : ''}<div><dt>Category</dt><dd>${cats}</dd></div>${p.subcategory ? `<div><dt>Subcategory</dt><dd>${esc(p.subcategory)}</dd></div>` : ''}<div><dt>Seller</dt><dd>${esc(seller.name)}${seller.verified ? ' · Verified' : ''} · ${seller.rating} ★</dd></div></dl>
           <div class="pv-actions">
             ${out ? '<button type="button" class="catalog-add-cart is-out" disabled>Out of stock</button>' : `<button type="button" class="catalog-add-cart pv-add" data-add="${p.id}">Add to Cart</button>`}
             <button type="button" class="pv-fav" data-fav="${p.id}" aria-label="Save ${esc(p.name)} to favorites"><img src="images/heart-slate.svg" alt=""><span>Save</span></button>
           </div>
         </div>
       </div>
+      <section class="pv-reviews"><div class="pv-reviews-heading"><h2>Customer reviews</h2><div><strong>${p.rating}</strong><span>${starsFor(p.rating)}</span><small>${p.reviews || reviewSeed} customer ratings</small></div></div><div class="pv-review-list">${reviewsHTML}</div></section>
       ${related.length ? `<h2 class="pv-related-title">You may also like</h2><div class="catalog-grid pv-related">${related.map(catalogCardHTML).join('')}</div>` : ''}`;
     syncUI();
   }
@@ -1312,8 +1331,46 @@ document.addEventListener('DOMContentLoaded', () => {
     const favButton = target.closest('[data-fav]');
     if (favButton) { toggleFavorite(favButton.dataset.fav); return; }
 
+    const pvGallery = target.closest('[data-pv-image]');
+    if (pvGallery) {
+      const main = document.getElementById('pv-main-image');
+      if (main) main.src = pvGallery.dataset.pvImage;
+      target.closest('.pv-thumbnails')?.querySelectorAll('.pv-thumb').forEach((thumb) => thumb.classList.remove('is-active'));
+      pvGallery.classList.add('is-active');
+      return;
+    }
+
+    const pvOption = target.closest('[data-pv-size], [data-pv-color]');
+    if (pvOption) {
+      const group = pvOption.closest('.pv-options');
+      group?.querySelectorAll('.pv-option-button').forEach((button) => button.classList.remove('is-active'));
+      pvOption.classList.add('is-active');
+      return;
+    }
+
+    const pvQty = target.closest('[data-pv-qty]');
+    if (pvQty) {
+      const value = document.getElementById('pv-quantity-value');
+      if (value) {
+        const p = byId.get(route.arg);
+        const max = p?.stock || 99;
+        value.textContent = String(Math.max(1, Math.min(max, (Number(value.textContent) || 1) + Number(pvQty.dataset.pvQty))));
+      }
+      return;
+    }
+
     const catalogAdd = target.closest('.catalog-add-cart');
-    if (catalogAdd) { addToCart(catalogAdd.dataset.add); return; }
+    if (catalogAdd) {
+      if (catalogAdd.classList.contains('pv-add')) {
+        const value = Number(document.getElementById('pv-quantity-value')?.textContent) || 1;
+        const p = byId.get(catalogAdd.dataset.add);
+        const existing = cart.find((line) => line.id === p.id);
+        const current = existing?.quantity || 0;
+        const amount = Math.max(1, Math.min(value, p.stock - current));
+        for (let i = 0; i < amount; i += 1) addToCart(p.id);
+      } else addToCart(catalogAdd.dataset.add);
+      return;
+    }
 
     const controls = target.closest('.cart-controls[data-cart-id]');
     if (controls) {
