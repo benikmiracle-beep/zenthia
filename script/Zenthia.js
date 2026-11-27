@@ -181,6 +181,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /* ---------- data ---------- */
   const PRODUCTS = window.ZENTHIA_PRODUCTS || [];
+  const SELLERS = window.ZENTHIA_SELLERS || {};
+  const REVIEWS = window.ZENTHIA_REVIEWS || {};
+  // Every product needs a category list and a gallery, even if the data row leaves them out.
+  PRODUCTS.forEach((p) => {
+    if (!p.categories || !p.categories.length) p.categories = [p.subcategory || p.category].filter(Boolean);
+    if (!p.images || !p.images.length) p.images = [p.image].filter(Boolean);
+    if (!p.image) p.image = p.images[0];
+  });
+  const fallbackImg = (p) => 'images/products/' + p.id + '-1.svg';
+  const needsOptions = (p) => !!(p.sizes && p.sizes.length);
   const byId = new Map(PRODUCTS.map((p) => [p.id, p]));
   const byName = new Map(PRODUCTS.map((p) => [p.name, p]));
 
@@ -206,13 +216,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let currentCurrency = currencies[localStorage.getItem('zenthia-currency')] ? localStorage.getItem('zenthia-currency') : 'USD';
   let favorites = [...new Set(readList('zenthia-favorites').map(resolveId).filter(Boolean))];
+  // A cart line is one product plus the colour/size chosen, so the same shoe in two sizes is two lines.
+  const lineKey = (line) => [line.id, line.size || '', line.color || ''].join('|');
   let cart = [];
   readList('zenthia-cart').forEach((entry) => {
     const id = resolveId(entry);
     if (!id) return;
     const qty = Math.max(1, Number(entry.quantity) || 1);
-    const line = cart.find((item) => item.id === id);
-    if (line) line.quantity += qty; else cart.push({ id, quantity: qty });
+    const next = { id, quantity: qty };
+    if (entry.size) next.size = entry.size;
+    if (entry.color) next.color = entry.color;
+    const line = cart.find((item) => lineKey(item) === lineKey(next));
+    if (line) line.quantity += qty; else cart.push(next);
   });
 
   function save() {
@@ -237,23 +252,51 @@ document.addEventListener('DOMContentLoaded', () => {
   const plural = (n) => `${n} ${n === 1 ? 'item' : 'items'}`;
 
   /* ---------- cart + favorites actions ---------- */
-  function addToCart(id) {
-    if (!byId.has(id) || !inStock(byId.get(id))) return;
-    const line = cart.find((item) => item.id === id);
-    if (line) line.quantity += 1; else cart.push({ id, quantity: 1 });
+  const qtyOf = (id) => cart.filter((item) => item.id === id).reduce((total, item) => total + item.quantity, 0);
+  const defaultOpts = (p) => (p.colors && p.colors.length ? { color: p.colors[0].name } : {});
+  const lineLabel = (line) => {
+    const p = byId.get(line.id) || {};
+    return [line.color && 'Colour: ' + line.color, line.size && (p.sizeLabel || 'Size') + ': ' + line.size].filter(Boolean).join(' · ');
+  };
+
+  // Adds `qty` of a product (never more than the stock). Returns how many were really added.
+  function addToCart(id, qty = 1, opts = {}) {
+    const p = byId.get(id);
+    if (!p || !inStock(p)) return 0;
+    const next = { id, quantity: 0 };
+    if (opts.size) next.size = opts.size;
+    if (opts.color) next.color = opts.color;
+    const room = p.stock === undefined ? qty : Math.max(0, p.stock - qtyOf(id));
+    const add = Math.min(qty, room);
+    if (add <= 0) return 0;
+    const line = cart.find((item) => lineKey(item) === lineKey(next));
+    if (line) line.quantity += add; else cart.push({ ...next, quantity: add });
     afterChange();
+    return add;
   }
 
+  // Card buttons work on a product id (first line of that product).
   function changeQty(id, delta) {
+    const p = byId.get(id);
+    if (!p) return;
     const line = cart.find((item) => item.id === id);
-    if (!line) { if (delta > 0) addToCart(id); return; }
+    if (!line) { if (delta > 0 && !needsOptions(p)) addToCart(id, 1, defaultOpts(p)); return; }
+    changeLine(lineKey(line), delta);
+  }
+
+  // Cart page buttons work on one exact line.
+  function changeLine(key, delta) {
+    const line = cart.find((item) => lineKey(item) === key);
+    if (!line) return;
+    const p = byId.get(line.id);
+    if (delta > 0 && p && p.stock !== undefined && qtyOf(line.id) >= p.stock) return;
     line.quantity += delta;
-    if (line.quantity <= 0) cart = cart.filter((item) => item.id !== id);
+    if (line.quantity <= 0) cart = cart.filter((item) => item !== line);
     afterChange();
   }
 
-  function removeFromCart(id) {
-    cart = cart.filter((item) => item.id !== id);
+  function removeFromCart(key) {
+    cart = cart.filter((item) => lineKey(item) !== key);
     afterChange();
   }
 
@@ -276,36 +319,48 @@ document.addEventListener('DOMContentLoaded', () => {
       : '<button type="button" class="add-cart-button">Add to cart</button>';
   }
 
+  const imgTag = (p, src) => `<img src="${esc(src || p.image)}" alt="${esc(p.name)}" data-fb="${fallbackImg(p)}" loading="lazy" decoding="async">`;
+  const discountOf = (p) => (p.oldPrice && p.oldPrice > p.price ? Math.round((1 - p.price / p.oldPrice) * 100) : 0);
+
   function flashCardHTML(p) {
-    const off = p.oldPrice ? Math.round((1 - p.price / p.oldPrice) * 100) : 0;
+    const off = discountOf(p);
+    const control = needsOptions(p) && inStock(p)
+      ? `<div class="cart-controls"><a class="add-cart-button select-options" href="${productHref(p.id)}">Select options</a></div>`
+      : `<div class="cart-controls" data-cart-id="${p.id}"></div>`;
     return `<article class="product-card sale-card" data-id="${p.id}">
         <div class="product-image-wrap">
-          <img src="${p.image}" alt="${esc(p.name)}" loading="lazy" decoding="async">
+          ${imgTag(p)}
           ${off ? `<span class="tag-badge hot">-${off}%</span>` : ''}
         </div>
         <div class="product-info">
           <div class="product-topline"><span>${esc(p.label || (primaryCat(p) || {}).name || '')}</span><button type="button" class="wishlist-button" data-fav="${p.id}" aria-label="Add to wishlist"><img src="images/heart-slate.svg" alt="" class="i"></button></div>
           <h3><a href="${productHref(p.id)}">${esc(p.name)}</a></h3>
           <div class="rating"><img src="images/star-amber.svg" alt="" class="i" aria-hidden="true"> ${p.rating}</div>
-          <div class="price-row"><strong>${formatPrice(p.price)}</strong>${p.oldPrice ? `<span>${formatPrice(p.oldPrice)}</span>` : ''}<div class="cart-controls" data-cart-id="${p.id}"></div></div>
+          <div class="price-row"><strong>${formatPrice(p.price)}</strong>${p.oldPrice ? `<span>${formatPrice(p.oldPrice)}</span>` : ''}${control}</div>
         </div>
       </article>`;
   }
 
   function catalogCardHTML(p) {
     const stars = '★'.repeat(Math.max(0, Math.min(5, Math.round(p.rating))));
+    const off = discountOf(p);
+    const low = inStock(p) && p.stock !== undefined && p.stock <= 5;
+    let action;
+    if (!inStock(p)) action = '<button type="button" class="catalog-add-cart is-out" disabled>Out of stock</button>';
+    else if (needsOptions(p)) action = `<a class="catalog-add-cart select-options" href="${productHref(p.id)}">Select options</a>`;
+    else action = `<button type="button" class="catalog-add-cart" data-add="${p.id}">Add to Cart</button>`;
     return `<article class="catalog-card" data-id="${p.id}">
         <div class="catalog-image-wrap">
-          <img src="${p.image}" alt="${esc(p.name)}" loading="lazy" decoding="async">
+          ${imgTag(p)}
           ${p.badge ? `<span class="catalog-badge${p.badge === 'Sale' ? ' sale' : ''}">${esc(p.badge)}</span>` : ''}
           ${inStock(p) ? '' : '<span class="catalog-badge oos">Out of stock</span>'}
           <button type="button" class="catalog-wishlist" data-fav="${p.id}" aria-label="Add ${esc(p.name)} to favorites"><img src="images/heart-slate.svg" alt=""></button>
         </div>
         <div class="catalog-card-info">
           <h3><a href="${productHref(p.id)}">${esc(p.name)}</a></h3>
-          <div class="catalog-rating"><span>${stars}</span><small>${p.rating}${p.reviews ? ` (${p.reviews})` : ''}</small></div>
-          <div class="catalog-price"><strong>${formatPrice(p.price)}</strong>${p.oldPrice ? `<del>${formatPrice(p.oldPrice)}</del><span class="catalog-off">-${Math.round((1 - p.price / p.oldPrice) * 100)}%</span>` : ''}</div>
-          ${inStock(p) ? `<button type="button" class="catalog-add-cart" data-add="${p.id}">Add to Cart</button>` : '<button type="button" class="catalog-add-cart is-out" disabled>Out of stock</button>'}
+          <div class="catalog-rating"><span>${stars}</span><small>${p.rating}${p.reviews ? ` (${p.reviews})` : ''}</small>${low ? `<small class="catalog-low">Only ${p.stock} left</small>` : ''}</div>
+          <div class="catalog-price"><strong>${formatPrice(p.price)}</strong>${off ? `<del>${formatPrice(p.oldPrice)}</del><span class="catalog-off">-${off}%</span>` : ''}</div>
+          ${action}
         </div>
       </article>`;
   }
@@ -322,11 +377,11 @@ document.addEventListener('DOMContentLoaded', () => {
           <div class="seller-meta"><strong>${formatPrice(lead.price)}</strong><span>${lead.rating} rating</span></div>
           <a href="${productHref(lead.id)}" class="mini-cta">Shop now</a>
         </div>
-        <img src="${lead.image}" alt="${esc(lead.name)}" loading="lazy" decoding="async">
+        ${imgTag(lead)}
       </article>` : '';
     const restHTML = rest.map((p) => `<a class="mini-seller" href="${productHref(p.id)}">
           <span class="rank">${String(p.topRank).padStart(2, '0')}</span>
-          <img src="${p.image}" alt="${esc(p.name)}" loading="lazy" decoding="async">
+          ${imgTag(p)}
           <div><h4>${esc(p.name)}</h4><p>${formatPrice(p.price)}</p></div>
         </a>`).join('');
     return leadHTML + `<div class="mini-sellers">${restHTML}</div>`;
@@ -377,6 +432,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const BRANDS = [...new Set(PRODUCTS.map((p) => p.brand).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const inStock = (p) => p.stock === undefined || p.stock > 0;
 
+  const PAGE_SIZE = 24;
+  let shown = PAGE_SIZE; // how many products the grid shows before "Show more"
   let activePill = 'All';
   let route = { type: 'home', arg: '', f: EMPTY_FILTERS(), sort: '' };
   let lastBrowseHash = ''; // where "Back to results" goes from a product page
@@ -466,8 +523,8 @@ document.addEventListener('DOMContentLoaded', () => {
       brand: norm(p.brand),
       sub: norm(own.map((c) => c.name).join(' ')),
       cat: norm(ancestors.join(' ')),
-      tags: norm([p.label, ...(p.tags || [])].join(' ')),
-      desc: norm([p.description, p.blurb].join(' '))
+      tags: norm([p.label, ...(p.tags || []), (SELLERS[p.seller] || {}).name].join(' ')),
+      desc: norm([p.description, p.blurb, (p.highlights || []).join(' '), (p.colors || []).map((c) => c.name).join(' ')].join(' '))
     }];
   }));
 
@@ -904,7 +961,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       catalogGrid.innerHTML = `<div class="catalog-empty"><h3>${message}</h3>${extra}<a href="#/all">Browse all products</a></div>`;
     } else {
-      catalogGrid.innerHTML = list.map(catalogCardHTML).join('');
+      const visible = list.slice(0, shown);
+      const more = list.length - visible.length;
+      catalogGrid.innerHTML = visible.map(catalogCardHTML).join('') + (more > 0
+        ? `<div class="catalog-more"><p>Showing ${visible.length} of ${list.length} products</p><button type="button" data-show-more>Show ${Math.min(PAGE_SIZE, more)} more</button></div>`
+        : (list.length > PAGE_SIZE ? `<div class="catalog-more"><p>You have seen all ${list.length} products</p></div>` : ''));
     }
     syncUI();
   }
@@ -912,61 +973,187 @@ document.addEventListener('DOMContentLoaded', () => {
   /* ---------- product page ---------- */
   const starsFor = (rating) => '★'.repeat(Math.max(0, Math.min(5, Math.round(rating || 0)))) + '<span class="pv-star-off">' + '★'.repeat(5 - Math.max(0, Math.min(5, Math.round(rating || 0)))) + '</span>';
 
+  /* ---------- product page ---------- */
+  let pdp = { id: '', size: '', color: '', qty: 1, img: 0 };
+  const pdpMax = (p) => Math.max(1, Math.min(p.stock === undefined ? 10 : p.stock, 10));
+  const formatDate = (iso) => { const d = new Date(iso + 'T00:00:00'); return isNaN(d) ? iso : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); };
+
+  // Star breakdown that adds up to the review count and averages out to the product rating.
+  function ratingSplit(p) {
+    const total = p.reviews || 0;
+    if (!total) return null;
+    const mean = Math.min(4.95, Math.max(1.5, p.rating || 0));
+    const dist = (k) => { const w = [1, 2, 3, 4, 5].map((n) => Math.exp(k * n)); const sum = w.reduce((a, b) => a + b, 0); return w.map((x) => x / sum); };
+    let lo = 0; let hi = 4;
+    for (let i = 0; i < 30; i++) { const mid = (lo + hi) / 2; const m = dist(mid).reduce((a, x, n) => a + x * (n + 1), 0); if (m < mean) lo = mid; else hi = mid; }
+    const counts = dist((lo + hi) / 2).map((x) => Math.floor(x * total));
+    counts[4] += total - counts.reduce((a, b) => a + b, 0);
+    return counts; // index 0 = 1 star ... 4 = 5 stars
+  }
+
+  function relatedFor(p) {
+    const mine = new Set((p.categories || []).map((id) => (rootOf(id) || {}).id));
+    const shared = (o) => (o.categories || []).filter((id) => (p.categories || []).includes(id)).length;
+    const score = (o) => shared(o) * 100 + (o.brand === p.brand ? 20 : 0) + (o.featured || 0);
+    return PRODUCTS.filter((o) => o.id !== p.id && (o.categories || []).some((id) => mine.has((rootOf(id) || {}).id)))
+      .sort((a, b) => score(b) - score(a)).slice(0, 8);
+  }
+
   function renderProduct() {
     const p = byId.get(route.arg);
     if (!p || !productView) return;
+    if (pdp.id !== p.id) pdp = { id: p.id, size: '', color: (p.colors && p.colors[0] && p.colors[0].name) || '', qty: 1, img: 0 };
     const trail = [];
     let node = primaryCat(p).id !== 'all' ? catById.get(primaryCat(p).id) : null;
     while (node) { trail.unshift(`<a href="${catHref(node.id)}">${esc(node.name)}</a>`); node = catById.get(node.parent); }
-    const off = p.oldPrice ? Math.round((1 - p.price / p.oldPrice) * 100) : 0;
+    const off = discountOf(p);
     const out = !inStock(p);
     const low = !out && p.stock !== undefined && p.stock <= 5;
+    const status = p.availability === 'preorder' && !out ? { cls: 'low', text: 'Pre-order · ships as soon as stock arrives' }
+      : out ? { cls: 'out', text: 'Out of stock' }
+      : low ? { cls: 'low', text: `Only ${p.stock} left in stock` }
+      : { cls: 'in', text: p.stock === undefined ? 'In stock' : `In stock · ${p.stock} available` };
     const cats = (p.categories || []).map((id) => catById.get(id)).filter(Boolean).map((c) => `<a href="${catHref(c.id)}">${esc(c.name)}</a>`).join(', ');
-    const mine = new Set((p.categories || []).map((id) => (rootOf(id) || {}).id));
-    const shared = (o) => (o.categories || []).filter((id) => (p.categories || []).includes(id)).length;
-    const related = PRODUCTS.filter((o) => o.id !== p.id && (o.categories || []).some((id) => mine.has((rootOf(id) || {}).id)))
-      .sort((a, b) => shared(b) - shared(a) || (b.featured || 0) - (a.featured || 0))
-      .slice(0, 4);
-    const gallery = [...new Set([p.image, ...(p.images || [])].filter(Boolean))];
-    const thumbnails = gallery.length > 1 ? gallery.map((image, index) => `<button type="button" class="pv-thumb${index === 0 ? ' is-active' : ''}" data-pv-image="${esc(image)}" aria-label="View product image ${index + 1}"><img src="${esc(image)}" alt="${esc(p.name)} view ${index + 1}"></button>`).join('') : '';
-    const colors = p.colors || ['Classic'];
-    const sizes = p.sizes || [];
-    const seller = p.seller || { name: 'Zenthia Marketplace', rating: 4.8, verified: true };
-    const reviewSeed = p.reviews || 48;
-    const customerReviews = [
-      { name: 'Verified buyer', rating: Math.max(4, Math.round(p.rating)), title: 'Exactly as described', text: 'Good quality, carefully packed and delivered within the stated timeframe.' },
-      { name: 'Zenthia customer', rating: Math.max(4, Math.round(p.rating)), title: 'Would buy again', text: 'The product looks and works as expected. It is a practical choice for everyday use.' },
-      { name: 'Verified buyer', rating: Math.round(p.rating), title: 'Great overall experience', text: 'Smooth ordering process and the item matched the photos and description.' }
-    ];
-    const reviewsHTML = customerReviews.map((review) => `<article class="pv-review"><div class="pv-review-head"><strong>${esc(review.name)}</strong><span>${'★'.repeat(review.rating)}<small>${'★'.repeat(5 - review.rating)}</small></span></div><h3>${esc(review.title)}</h3><p>${esc(review.text)}</p></article>`).join('');
+    const seller = SELLERS[p.seller];
+    const sellerCount = seller ? PRODUCTS.filter((o) => o.seller === p.seller).length : 0;
+    const split = ratingSplit(p);
+    const reviews = REVIEWS[p.id] || [];
+    const related = relatedFor(p);
+    const max = pdpMax(p);
+    const images = p.images.length ? p.images : [p.image];
+    const optName = (p.sizeLabel || 'Size').replace(/\s*\(.*\)/, '').toLowerCase();
     document.title = `${p.name} – Zenthia`;
+
+    const gallery = `<div class="pv-gallery">
+        ${images.length > 1 ? `<div class="pv-thumbs" role="group" aria-label="Product images">${images.map((src, i) => `<button type="button" class="pv-thumb${i === pdp.img ? ' is-active' : ''}" data-pv-thumb="${i}" aria-label="Show image ${i + 1} of ${images.length}" aria-current="${i === pdp.img}"><img src="${esc(src)}" alt="" data-fb="${fallbackImg(p)}" loading="lazy" decoding="async"></button>`).join('')}</div>` : ''}
+        <div class="pv-media"><img id="pv-main" src="${esc(images[pdp.img] || images[0])}" alt="${esc(p.name)}" data-fb="${fallbackImg(p)}" decoding="async">
+          ${p.badge ? `<span class="catalog-badge${p.badge === 'Sale' ? ' sale' : ''}">${esc(p.badge)}</span>` : off ? `<span class="catalog-badge sale">-${off}%</span>` : ''}
+          ${images.length > 1 ? `<button type="button" class="pv-nav prev" data-pv-prev aria-label="Previous image">‹</button><button type="button" class="pv-nav next" data-pv-next aria-label="Next image">›</button><span class="pv-count" id="pv-count">${pdp.img + 1} / ${images.length}</span>` : ''}
+        </div></div>`;
+
+    const colourBox = p.colors && p.colors.length ? `<div class="pv-opt"><div class="pv-opt-head"><span>Colour</span><b id="pv-color-label">${esc(pdp.color)}</b></div>
+        <div class="pv-swatches" role="group" aria-label="Colour">${p.colors.map((c) => `<button type="button" class="pv-swatch${c.name === pdp.color ? ' is-on' : ''}" data-pv-color="${esc(c.name)}" style="--sw:${esc(c.hex)}" title="${esc(c.name)}" aria-label="${esc(c.name)}" aria-pressed="${c.name === pdp.color}"></button>`).join('')}</div></div>` : '';
+    const sizeBox = needsOptions(p) ? `<div class="pv-opt" id="pv-size-box"><div class="pv-opt-head"><span>${esc(p.sizeLabel || 'Size')}</span><b id="pv-size-label">${esc(pdp.size || 'Select')}</b></div>
+        <div class="pv-sizes" role="group" aria-label="${esc(p.sizeLabel || 'Size')}">${p.sizes.map((z) => `<button type="button" class="pv-size${z === pdp.size ? ' is-on' : ''}" data-pv-size="${esc(z)}" aria-pressed="${z === pdp.size}">${esc(z)}</button>`).join('')}</div>
+        <p class="pv-error" id="pv-size-error" role="alert" hidden>Please choose your ${esc(optName)} first.</p></div>` : '';
+
+    const sellerBox = seller ? `<div class="pv-seller"><span class="pv-seller-avatar" aria-hidden="true">${esc(seller.name.charAt(0))}</span>
+        <div><p class="pv-seller-name"><strong>${esc(seller.name)}</strong><span class="pv-seller-badge">${esc(seller.badge)}</span></p>
+        <p>★ ${seller.rating} · ${seller.positive}% positive feedback · ${esc(seller.location)}</p>
+        <p>On Zenthia since ${seller.since} · ${sellerCount} ${sellerCount === 1 ? 'product' : 'products'} · ${esc(seller.response)}</p></div>
+        <a class="pv-seller-link" href="${searchHash(seller.name)}">View store</a></div>` : '';
+
+    const bars = split ? [5, 4, 3, 2, 1].map((n) => `<div class="pv-bar"><span>${n}★</span><i><b style="width:${Math.round((split[n - 1] / p.reviews) * 100)}%"></b></i><em>${split[n - 1]}</em></div>`).join('') : '';
+    const reviewList = reviews.map((r) => `<article class="pv-review">
+        <header><span class="pv-rev-avatar" aria-hidden="true">${esc(r.name.charAt(0))}</span><div><strong>${esc(r.name)}</strong>${r.verified ? '<small class="pv-verified">Verified purchase</small>' : ''}</div><time datetime="${esc(r.date)}">${formatDate(r.date)}</time></header>
+        <div class="pv-stars" role="img" aria-label="${r.rating} out of 5 stars">${starsFor(r.rating)}</div>
+        <h3>${esc(r.title)}</h3><p>${esc(r.text)}</p>
+        <footer>${r.helpful ? `${r.helpful} ${r.helpful === 1 ? 'person' : 'people'} found this helpful` : 'Be the first to find this helpful'}</footer></article>`).join('');
+
+    const details = [
+      ['Product ID', p.id], ['Brand', p.brand], ['Category', cats], ['Sold by', seller ? seller.name : ''],
+      ['Availability', status.text], ['Colours', (p.colors || []).map((c) => c.name).join(', ')],
+      [p.sizeLabel || 'Sizes', (p.sizes || []).join(', ')], ['Delivery', 'Zenthia Express, about 5 days'], ['Returns', '7-day money-back guarantee']
+    ].filter((row) => row[1]).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${k === 'Category' ? v : esc(v)}</dd></div>`).join('');
+
     productView.innerHTML = `
       <nav class="pv-crumbs" aria-label="Breadcrumb">${lastBrowseHash ? `<a class="pv-back" href="${esc(lastBrowseHash)}">← Back to results</a>` : ''}<span><a href="#">Home</a>${trail.length ? ' / ' + trail.join(' / ') : ''} / <b>${esc(p.name)}</b></span></nav>
       <div class="pv-grid">
-        <div class="pv-media-column">
-          <div class="pv-media"><img id="pv-main-image" src="${esc(gallery[0])}" alt="${esc(p.name)}" decoding="async">${p.badge ? `<span class="catalog-badge${p.badge === 'Sale' ? ' sale' : ''}">${esc(p.badge)}</span>` : ''}</div>
-          ${thumbnails ? `<div class="pv-thumbnails" aria-label="Product images">${thumbnails}</div>` : ''}
-        </div>
+        ${gallery}
         <div class="pv-info">
           ${p.brand ? `<a class="pv-brand" href="${routeHash({ type: 'search', arg: p.brand, f: EMPTY_FILTERS(), sort: '' })}">${esc(p.brand)}</a>` : ''}
           <h1>${esc(p.name)}</h1>
-          <div class="pv-rating"><span class="pv-stars" aria-hidden="true">${starsFor(p.rating)}</span><span>${p.rating}${p.reviews ? ` · ${p.reviews} reviews` : ` · ${reviewSeed} reviews`}</span></div>
-          <div class="pv-price"><strong>${formatPrice(p.price)}</strong>${p.oldPrice ? `<del>${formatPrice(p.oldPrice)}</del><span class="catalog-off">-${off}%</span>` : ''}</div>
-          <div class="pv-stock ${out ? 'out' : low ? 'low' : 'in'}">${out ? 'Out of stock' : low ? `Only ${p.stock} left in stock` : 'In stock'}</div>
+          <div class="pv-rating"><span class="pv-stars" aria-hidden="true">${starsFor(p.rating)}</span><span>${p.rating}</span>${p.reviews ? `<button type="button" class="pv-rating-link" data-pv-reviews>${p.reviews} reviews</button>` : ''}</div>
+          <div class="pv-price"><strong>${formatPrice(p.price)}</strong>${off ? `<del>${formatPrice(p.oldPrice)}</del><span class="catalog-off">-${off}%</span>` : ''}</div>
+          ${off ? `<p class="pv-save">You save ${formatPrice(p.oldPrice - p.price)} compared with the original price.</p>` : ''}
+          <div class="pv-stock ${status.cls}">${esc(status.text)}</div>
           ${p.description || p.blurb ? `<p class="pv-desc">${esc(p.description || p.blurb)}</p>` : ''}
-          ${sizes.length ? `<div class="pv-option"><span>Size</span><div class="pv-options">${sizes.map((size, index) => `<button type="button" class="pv-option-button${index === 0 ? ' is-active' : ''}" data-pv-size="${esc(size)}">${esc(size)}</button>`).join('')}</div></div>` : ''}
-          <div class="pv-option"><span>Colour</span><div class="pv-options">${colors.map((color, index) => `<button type="button" class="pv-option-button${index === 0 ? ' is-active' : ''}" data-pv-color="${esc(color)}">${esc(color)}</button>`).join('')}</div></div>
-          <div class="pv-quantity-row"><span>Quantity</span><div class="pv-quantity" aria-label="Quantity"><button type="button" data-pv-qty="-1" aria-label="Decrease quantity">−</button><strong id="pv-quantity-value">1</strong><button type="button" data-pv-qty="1" aria-label="Increase quantity">+</button></div></div>
-          <dl class="pv-meta">${p.brand ? `<div><dt>Brand</dt><dd>${esc(p.brand)}</dd></div>` : ''}<div><dt>Category</dt><dd>${cats}</dd></div>${p.subcategory ? `<div><dt>Subcategory</dt><dd>${esc(p.subcategory)}</dd></div>` : ''}<div><dt>Seller</dt><dd>${esc(seller.name)}${seller.verified ? ' · Verified' : ''} · ${seller.rating} ★</dd></div></dl>
+          ${p.highlights && p.highlights.length ? `<ul class="pv-highlights">${p.highlights.map((h) => `<li>${esc(h)}</li>`).join('')}</ul>` : ''}
+          ${colourBox}${sizeBox}
+          ${out ? '' : `<div class="pv-qty"><span class="pv-qty-label">Quantity</span><div class="pv-stepper"><button type="button" data-pv-qty="-1" aria-label="Decrease quantity"${pdp.qty <= 1 ? ' disabled' : ''}>−</button><output id="pv-qty-val" aria-live="polite">${pdp.qty}</output><button type="button" data-pv-qty="1" aria-label="Increase quantity"${pdp.qty >= max ? ' disabled' : ''}>+</button></div>${max < 10 ? `<small>Max ${max} per order</small>` : ''}</div>`}
           <div class="pv-actions">
-            ${out ? '<button type="button" class="catalog-add-cart is-out" disabled>Out of stock</button>' : `<button type="button" class="catalog-add-cart pv-add" data-add="${p.id}">Add to Cart</button>`}
-            <button type="button" class="pv-fav" data-fav="${p.id}" aria-label="Save ${esc(p.name)} to favorites"><img src="images/heart-slate.svg" alt=""><span>Save</span></button>
+            ${out ? '<button type="button" class="catalog-add-cart is-out" disabled>Out of stock</button>' : '<button type="button" class="catalog-add-cart pv-add" data-pv-add>Add to Cart</button>'}
+            <button type="button" class="pv-fav" data-fav="${p.id}" aria-label="Save ${esc(p.name)} to favorites"><img src="images/heart-slate.svg" alt=""><span>Wishlist</span></button>
           </div>
+          <p class="pv-msg" id="pv-msg" role="status" aria-live="polite"></p>
+          <ul class="pv-perks"><li>Zenthia Express: delivery in about 5 days</li><li>Free delivery on orders over ${formatPrice(60)}</li><li>7-day easy returns</li></ul>
+          ${sellerBox}
         </div>
       </div>
-      <section class="pv-reviews"><div class="pv-reviews-heading"><h2>Customer reviews</h2><div><strong>${p.rating}</strong><span>${starsFor(p.rating)}</span><small>${p.reviews || reviewSeed} customer ratings</small></div></div><div class="pv-review-list">${reviewsHTML}</div></section>
-      ${related.length ? `<h2 class="pv-related-title">You may also like</h2><div class="catalog-grid pv-related">${related.map(catalogCardHTML).join('')}</div>` : ''}`;
+      <section class="pv-section" aria-labelledby="pv-details-title"><h2 id="pv-details-title">Product details</h2>
+        <dl class="pv-details">${details}</dl></section>
+      <section class="pv-section" id="pv-reviews" aria-labelledby="pv-reviews-title"><h2 id="pv-reviews-title">Customer reviews</h2>
+        ${p.reviews ? `<div class="pv-rev-layout"><div class="pv-rev-summary"><div class="pv-rev-score"><strong>${p.rating}</strong><span class="pv-stars" aria-hidden="true">${starsFor(p.rating)}</span><small>${p.reviews} ${p.reviews === 1 ? 'review' : 'reviews'}</small></div>${bars}</div>
+          <div class="pv-rev-list">${reviewList || '<p class="pv-rev-note">No written reviews yet.</p>'}${reviews.length ? `<p class="pv-rev-note">Showing the ${reviews.length} most recent of ${p.reviews} reviews.</p>` : ''}</div></div>` : '<p class="pv-rev-note">No reviews yet. Be the first to review this product after you buy it.</p>'}
+      </section>
+      ${related.length ? `<h2 class="pv-related-title">Related products</h2><div class="catalog-grid pv-related">${related.map(catalogCardHTML).join('')}</div>` : ''}`;
     syncUI();
+  }
+
+  function setPdpImage(i) {
+    const p = byId.get(pdp.id);
+    if (!p) return;
+    const n = p.images.length;
+    pdp.img = (i + n) % n;
+    const main = document.getElementById('pv-main');
+    if (main) { delete main.dataset.fallback; main.src = p.images[pdp.img]; }
+    productView.querySelectorAll('[data-pv-thumb]').forEach((b, k) => { b.classList.toggle('is-active', k === pdp.img); b.setAttribute('aria-current', k === pdp.img ? 'true' : 'false'); });
+    const count = document.getElementById('pv-count');
+    if (count) count.textContent = `${pdp.img + 1} / ${n}`;
+  }
+
+  // Clicks inside the product page that are about options, gallery, quantity and adding. Returns true if handled.
+  function handleProductClick(target) {
+    const p = byId.get(pdp.id);
+    if (!p) return false;
+    const thumb = target.closest('[data-pv-thumb]');
+    if (thumb) { setPdpImage(Number(thumb.dataset.pvThumb)); return true; }
+    if (target.closest('[data-pv-prev]')) { setPdpImage(pdp.img - 1); return true; }
+    if (target.closest('[data-pv-next]')) { setPdpImage(pdp.img + 1); return true; }
+
+    const colour = target.closest('[data-pv-color]');
+    if (colour) {
+      pdp.color = colour.dataset.pvColor;
+      productView.querySelectorAll('[data-pv-color]').forEach((b) => { const on = b === colour; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', on); });
+      document.getElementById('pv-color-label').textContent = pdp.color;
+      const idx = p.colors.findIndex((c) => c.name === pdp.color);
+      if (idx >= 0 && idx < 2 && p.images[idx] && (idx === 0 || /-2\.svg$/.test(p.images[idx]))) setPdpImage(idx);
+      return true;
+    }
+    const size = target.closest('[data-pv-size]');
+    if (size) {
+      pdp.size = size.dataset.pvSize;
+      productView.querySelectorAll('[data-pv-size]').forEach((b) => { const on = b === size; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', on); });
+      document.getElementById('pv-size-label').textContent = pdp.size;
+      document.getElementById('pv-size-error').hidden = true;
+      return true;
+    }
+    const qty = target.closest('[data-pv-qty]');
+    if (qty) {
+      pdp.qty = Math.min(pdpMax(p), Math.max(1, pdp.qty + Number(qty.dataset.pvQty)));
+      document.getElementById('pv-qty-val').textContent = pdp.qty;
+      productView.querySelectorAll('[data-pv-qty]').forEach((b) => { b.disabled = Number(b.dataset.pvQty) < 0 ? pdp.qty <= 1 : pdp.qty >= pdpMax(p); });
+      return true;
+    }
+    if (target.closest('[data-pv-add]')) {
+      const msg = document.getElementById('pv-msg');
+      if (needsOptions(p) && !pdp.size) {
+        const err = document.getElementById('pv-size-error');
+        err.hidden = false;
+        document.getElementById('pv-size-box').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return true;
+      }
+      const opts = {};
+      if (pdp.color) opts.color = pdp.color;
+      if (pdp.size) opts.size = pdp.size;
+      const added = addToCart(p.id, pdp.qty, opts);
+      if (!added) msg.innerHTML = 'You already have all available units in your cart. <button type="button" data-open-shop="cart">View cart</button>';
+      else if (added < pdp.qty) msg.innerHTML = `Added ${added}. Only ${p.stock} available in total. <button type="button" data-open-shop="cart">View cart</button>`;
+      else msg.innerHTML = `Added ${added} to your cart. <button type="button" data-open-shop="cart">View cart</button>`;
+      return true;
+    }
+    if (target.closest('[data-pv-reviews]')) { document.getElementById('pv-reviews').scrollIntoView({ behavior: 'smooth', block: 'start' }); return true; }
+    return false;
   }
 
   function renderCategoryTiles() {
@@ -983,7 +1170,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderCategoryTiles();
     const flashGrid = document.getElementById('flash-grid');
     const sellers = document.getElementById('seller-layout');
-    if (flashGrid) flashGrid.innerHTML = PRODUCTS.filter((p) => p.flash).sort((a, b) => b.featured - a.featured).map(flashCardHTML).join('');
+    if (flashGrid) flashGrid.innerHTML = PRODUCTS.filter((p) => p.flash).sort((a, b) => (b.featured || 0) - (a.featured || 0)).slice(0, 8).map(flashCardHTML).join('');
     if (sellers) sellers.innerHTML = sellersHTML();
   }
 
@@ -1152,6 +1339,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function applyRoute() {
     route = parseRoute();
+    shown = PAGE_SIZE;
+    if (shopPage.classList.contains('is-open')) closeShopPage();
     const browsing = route.type !== 'home';
     const isProduct = route.type === 'product';
     [heroGrid, popularSection, flashSection, topSection].forEach((section) => { if (section) section.hidden = browsing; });
@@ -1178,6 +1367,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const pill = event.target.closest('button.catalog-filter');
     if (!pill) return;
     activePill = pill.dataset.category;
+    shown = PAGE_SIZE;
     renderCatalog();
   });
 
@@ -1204,11 +1394,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.querySelectorAll('.cart-controls[data-cart-id]').forEach((box) => {
-      const line = cart.find((item) => item.id === box.dataset.cartId);
-      box.innerHTML = controlsHTML(line ? line.quantity : 0);
+      box.innerHTML = controlsHTML(qtyOf(box.dataset.cartId));
     });
 
-    document.querySelectorAll('.catalog-add-cart').forEach((button) => {
+    document.querySelectorAll('.catalog-add-cart[data-add]').forEach((button) => {
       const inCart = cart.some((item) => item.id === button.dataset.add);
       button.textContent = inCart ? 'Added ✓' : 'Add to Cart';
       button.classList.toggle('is-added', inCart);
@@ -1253,7 +1442,7 @@ document.addEventListener('DOMContentLoaded', () => {
     shopPageType = type;
     const isCart = type === 'cart';
     const items = isCart
-      ? cart.map((line) => ({ product: byId.get(line.id), quantity: line.quantity })).filter((entry) => entry.product)
+      ? cart.map((line) => ({ product: byId.get(line.id), quantity: line.quantity, line })).filter((entry) => entry.product)
       : favorites.map((id) => ({ product: byId.get(id), quantity: 1 })).filter((entry) => entry.product);
     shopPageTitle.textContent = isCart ? 'Shopping Cart' : 'My Favorites';
     shopPageLabel.textContent = isCart ? 'Zenthia checkout' : 'Zenthia saved items';
@@ -1262,14 +1451,20 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!items.length) {
       shopPageItems.innerHTML = `<div class="shop-page-empty"><img src="images/${isCart ? 'shopping-cart-navy.svg' : 'heart-saved.svg'}" alt=""><h2>${isCart ? 'Your cart is empty' : 'No favorites yet'}</h2><p>${isCart ? 'Add products from the store to begin.' : 'Tap the heart on any product to save it.'}</p></div>`;
     } else {
-      shopPageItems.innerHTML = items.map(({ product, quantity }) => `
-        <article class="shop-page-item">
-          <img src="${product.image}" alt="${esc(product.name)}">
-          <div class="shop-page-item-info"><h3>${esc(product.name)}</h3><strong>${formatPrice(product.price * quantity)}</strong></div>
-          ${isCart
-            ? `<div class="shop-cart-controls"><button type="button" class="cart-minus" data-cart-minus="${product.id}" aria-label="Decrease quantity">−</button><strong class="cart-quantity">${quantity}</strong><button type="button" class="cart-plus" data-cart-plus="${product.id}" aria-label="Increase quantity">+</button></div><button type="button" class="shop-item-remove" data-cart-remove="${product.id}">Remove</button>`
-            : `<button type="button" class="shop-item-cart" data-add-cart="${product.id}">${cart.some((line) => line.id === product.id) ? 'Added ✓' : 'Add to cart'}</button>`}
-        </article>`).join('');
+      shopPageItems.innerHTML = items.map(({ product, quantity, line }) => {
+        const key = line ? esc(lineKey(line)) : '';
+        const opts = line ? lineLabel(line) : '';
+        let side;
+        if (isCart) side = `<div class="shop-cart-controls"><button type="button" class="cart-minus" data-cart-minus="${key}" aria-label="Decrease quantity">−</button><strong class="cart-quantity">${quantity}</strong><button type="button" class="cart-plus" data-cart-plus="${key}" aria-label="Increase quantity">+</button></div><button type="button" class="shop-item-remove" data-cart-remove="${key}">Remove</button>`;
+        else if (!inStock(product)) side = '<span class="shop-item-cart is-out">Out of stock</span>';
+        else if (needsOptions(product)) side = `<a class="shop-item-cart" href="${productHref(product.id)}" data-close-shop>Select options</a>`;
+        else side = `<button type="button" class="shop-item-cart" data-add-cart="${product.id}">${cart.some((l) => l.id === product.id) ? 'Added ✓' : 'Add to cart'}</button>`;
+        return `<article class="shop-page-item">
+          <img src="${esc(product.image)}" alt="${esc(product.name)}" data-fb="${fallbackImg(product)}">
+          <div class="shop-page-item-info"><h3><a href="${productHref(product.id)}" data-close-shop>${esc(product.name)}</a></h3>${opts ? `<p class="shop-line-opts">${esc(opts)}</p>` : ''}<strong>${formatPrice(product.price * quantity)}</strong></div>
+          ${side}
+        </article>`;
+      }).join('');
     }
 
     shopPage.classList.add('is-open');
@@ -1331,51 +1526,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const favButton = target.closest('[data-fav]');
     if (favButton) { toggleFavorite(favButton.dataset.fav); return; }
 
-    const pvGallery = target.closest('[data-pv-image]');
-    if (pvGallery) {
-      const main = document.getElementById('pv-main-image');
-      if (main) main.src = pvGallery.dataset.pvImage;
-      target.closest('.pv-thumbnails')?.querySelectorAll('.pv-thumb').forEach((thumb) => thumb.classList.remove('is-active'));
-      pvGallery.classList.add('is-active');
-      return;
-    }
+    if (target.closest('[data-close-shop]')) closeShopPage();
 
-    const pvOption = target.closest('[data-pv-size], [data-pv-color]');
-    if (pvOption) {
-      const group = pvOption.closest('.pv-options');
-      group?.querySelectorAll('.pv-option-button').forEach((button) => button.classList.remove('is-active'));
-      pvOption.classList.add('is-active');
-      return;
-    }
+    const showMore = target.closest('[data-show-more]');
+    if (showMore) { shown += PAGE_SIZE; renderCatalog(); return; }
 
-    const pvQty = target.closest('[data-pv-qty]');
-    if (pvQty) {
-      const value = document.getElementById('pv-quantity-value');
-      if (value) {
-        const p = byId.get(route.arg);
-        const max = p?.stock || 99;
-        value.textContent = String(Math.max(1, Math.min(max, (Number(value.textContent) || 1) + Number(pvQty.dataset.pvQty))));
-      }
-      return;
-    }
+    if (target.closest('#product-view') && handleProductClick(target)) return;
 
-    const catalogAdd = target.closest('.catalog-add-cart');
-    if (catalogAdd) {
-      if (catalogAdd.classList.contains('pv-add')) {
-        const value = Number(document.getElementById('pv-quantity-value')?.textContent) || 1;
-        const p = byId.get(catalogAdd.dataset.add);
-        const existing = cart.find((line) => line.id === p.id);
-        const current = existing?.quantity || 0;
-        const amount = Math.max(1, Math.min(value, p.stock - current));
-        for (let i = 0; i < amount; i += 1) addToCart(p.id);
-      } else addToCart(catalogAdd.dataset.add);
-      return;
-    }
+    const catalogAdd = target.closest('.catalog-add-cart[data-add]');
+    if (catalogAdd) { const p = byId.get(catalogAdd.dataset.add); if (p) addToCart(p.id, 1, defaultOpts(p)); return; }
 
     const controls = target.closest('.cart-controls[data-cart-id]');
     if (controls) {
       const id = controls.dataset.cartId;
-      if (target.closest('.add-cart-button')) addToCart(id);
+      if (target.closest('.add-cart-button')) { const p = byId.get(id); if (p) addToCart(id, 1, defaultOpts(p)); }
       else if (target.closest('.cart-plus')) changeQty(id, 1);
       else if (target.closest('.cart-minus')) changeQty(id, -1);
       return;
@@ -1384,14 +1548,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const remove = target.closest('[data-cart-remove]');
     if (remove) { removeFromCart(remove.dataset.cartRemove); return; }
     const plus = target.closest('[data-cart-plus]');
-    if (plus) { changeQty(plus.dataset.cartPlus, 1); return; }
+    if (plus) { changeLine(plus.dataset.cartPlus, 1); return; }
     const minus = target.closest('[data-cart-minus]');
-    if (minus) { changeQty(minus.dataset.cartMinus, -1); return; }
+    if (minus) { changeLine(minus.dataset.cartMinus, -1); return; }
     const addFromFav = target.closest('[data-add-cart]');
-    if (addFromFav) { addToCart(addFromFav.dataset.addCart); return; }
+    if (addFromFav) { const p = byId.get(addFromFav.dataset.addCart); if (p) addToCart(p.id, 1, defaultOpts(p)); return; }
 
     const card = target.closest('.catalog-card[data-id], .product-card[data-id]');
-    if (card && !target.closest('a, button, input, select, label')) location.hash = productHref(card.dataset.id);
+    if (card && !target.closest('a, button, input, select, label, .cart-controls')) location.hash = productHref(card.dataset.id);
   });
 
   document.addEventListener('keydown', (event) => {
@@ -1409,9 +1573,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const PLACEHOLDER = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"><rect width="400" height="400" fill="#eef2f7"/><path d="M130 170h140l10 130H120z" fill="#cbd5e1"/><path d="M165 170v-15a35 35 0 0 1 70 0v15" fill="none" stroke="#cbd5e1" stroke-width="14"/></svg>');
   document.addEventListener('error', (event) => {
     const img = event.target;
-    if (img.tagName !== 'IMG' || img.dataset.fallback || !img.closest('.product-image-wrap, .catalog-image-wrap, .mini-seller, .seller-highlight, .shop-page-item, .pv-media, .sg-item')) return;
+    if (img.tagName !== 'IMG' || img.dataset.fallback || !img.closest('.product-image-wrap, .catalog-image-wrap, .mini-seller, .seller-highlight, .shop-page-item, .pv-media, .pv-thumbs, .sg-item')) return;
     img.dataset.fallback = '1';
-    img.src = PLACEHOLDER;
+    img.src = img.dataset.fb || PLACEHOLDER;
+    setTimeout(() => img.addEventListener('error', () => { img.src = PLACEHOLDER; }, { once: true }), 0);
   }, true);
 
   /* ---------- features that need accounts/orders say so instead of doing nothing ---------- */
